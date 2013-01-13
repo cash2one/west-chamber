@@ -100,17 +100,17 @@ nfqueue.bind(0, handle_two_side_traffic)
 def clean_up(*args):
     # will be called twice, don't know why
     subprocess.call('iptables -D OUTPUT -p tcp -m owner --uid-owner stowaway -j QUEUE', shell=True)
-    subprocess.call('iptables -D INPUT -p tcp --tcp-flags ALL SYN, ACK -j QUEUE', shell=True)
+    subprocess.call('iptables -D INPUT -p tcp --tcp-flags ALL SYN,ACK -j QUEUE', shell=True)
     subprocess.call('iptables -D INPUT -p tcp --tcp-flags RST RST -j QUEUE', shell=True)
     subprocess.call('iptables -D INPUT -p icmp -m icmp --icmp-type 11 -j DROP', shell=True)
 
 signal.signal(signal.SIGINT, clean_up)
 
 try:
-    subprocess.call('iptables -A INPUT -p icmp -m icmp --icmp-type 11 -j DROP', shell=True)
-    subprocess.call('iptables -A INPUT -p tcp --tcp-flags RST RST -j QUEUE', shell=True) # use RST to verify detection
-    subprocess.call('iptables -A INPUT -p tcp --tcp-flags ALL SYN,ACK -j QUEUE', shell=True) # start injection & detection on SYN + ACK
-    subprocess.call('iptables -A OUTPUT -p tcp -m owner --uid-owner stowaway -j QUEUE', shell=True)
+    subprocess.call('iptables -I INPUT -p icmp -m icmp --icmp-type 11 -j DROP', shell=True)
+    subprocess.call('iptables -I INPUT -p tcp --tcp-flags RST RST -j QUEUE', shell=True) # use RST to verify detection
+    subprocess.call('iptables -I INPUT -p tcp --tcp-flags ALL SYN,ACK -j QUEUE', shell=True) # start injection & detection on SYN + ACK
+    subprocess.call('iptables -I OUTPUT -p tcp -m owner --uid-owner stowaway -j QUEUE', shell=True)
     print('running..')
     nfqueue.run()
 except KeyboardInterrupt:
