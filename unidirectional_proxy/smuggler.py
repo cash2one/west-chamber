@@ -6,8 +6,8 @@ import dpkt
 import socket
 
 JUST_SMUGGLE_SYN = False
-GATEWAY_IP = socket.inet_aton('123.114.44.142')
-IMPERSONATOR_IP = '123.254.110.216'
+GATEWAY_IP = socket.inet_aton('x.x.x.x')
+IMPERSONATOR_IP = 'y.y.y.y'
 IMPERSONATOR_PORT = 19840
 
 udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
