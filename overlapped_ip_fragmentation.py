@@ -1,15 +1,12 @@
 from netfilterqueue import NetfilterQueue
-import socket
 import traceback
-import dpkt
 import subprocess
 import signal
+import dpkt
+import socket
 
-# The implementation was wrong, should be writen using direct ethernet frame injection
-# It is not working, GFW can deal with overlapped ip fragment correctly
-
-raw_socket = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_RAW)
-raw_socket.setsockopt(socket.SOL_IP, socket.IP_HDRINCL, 1)
+raw_socket = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.htons(3))
+raw_socket.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 2**30)
 
 def split_ip_packet_to_overlapped_fragments(nfqueue_element):
     try:
@@ -23,8 +20,8 @@ def split_ip_packet_to_overlapped_fragments(nfqueue_element):
         fragment2.data = str(fragment2.data)[16:]
         fragment2.sum = 0
         fragment2.len = len(fragment2)
-        raw_socket.sendto(str(fragment1), (socket.inet_ntoa(fragment1.dst), 0))
-        raw_socket.sendto(str(fragment2), (socket.inet_ntoa(fragment2.dst), 0))
+        raw_socket.sendto(str(fragment1), ('pppoe-wan', 2048))
+        raw_socket.sendto(str(fragment2), ('pppoe-wan', 2048))
         nfqueue_element.drop()
     except:
         traceback.print_exc()
@@ -34,12 +31,12 @@ nfqueue = NetfilterQueue()
 nfqueue.bind(0, split_ip_packet_to_overlapped_fragments)
 
 def clean_up(*args):
-    subprocess.call('iptables -D OUTPUT -p tcp -m owner --uid-owner stowaway -j QUEUE', shell=True)
+    subprocess.call('iptables -D OUTPUT -m owner --uid-owner stowaway -j QUEUE', shell=True)
 
 signal.signal(signal.SIGINT, clean_up)
 
 try:
-    subprocess.call('iptables -I OUTPUT -p tcp -m owner --uid-owner stowaway -j QUEUE', shell=True)
+    subprocess.call('iptables -I OUTPUT -m owner --uid-owner stowaway -j QUEUE', shell=True)
     print('running..')
     nfqueue.run()
 except KeyboardInterrupt:
