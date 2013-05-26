@@ -2,21 +2,20 @@ from netfilterqueue import NetfilterQueue
 import subprocess
 import traceback
 import signal
-import dpkt
 import socket
+import dpkt
 
-raw_socket = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_RAW)
-raw_socket.setsockopt(socket.SOL_IP, socket.IP_HDRINCL, 1)
 
-def handle_two_side_traffic(nfqueue_element):
+def handle_packet(nfqueue_element):
     try:
-        print('mark: %s' % nfqueue_element.get_mark())
-        if nfqueue_element.get_mark():
-            nfqueue_element.accept()
-            return
         ip_packet = dpkt.ip.IP(nfqueue_element.get_payload())
         dst = socket.inet_ntoa(ip_packet.dst)
-        nfqueue_element.set_mark(1)
+        if dst.startswith('10.'):
+            nfqueue_element.set_mark(0x1feed)
+            print('matched', dst)
+        else:
+            nfqueue_element.set_mark(0x0feed)
+            print('not matched', dst)
         nfqueue_element.repeat()
     except:
         traceback.print_exc()
@@ -24,18 +23,21 @@ def handle_two_side_traffic(nfqueue_element):
 
 
 nfqueue = NetfilterQueue()
-nfqueue.bind(0, handle_two_side_traffic)
+nfqueue.bind(0, handle_packet)
 
 
 def clean_up(*args):
-    # will be called twice, don't know why
-    subprocess.call('iptables -D OUTPUT -p tcp -j QUEUE', shell=True)
+    subprocess.call('iptables -D OUTPUT -p tcp -m mark ! --mark 0xfeed/0xffff -j NFQUEUE', shell=True)
+    subprocess.call('iptables -D OUTPUT -p tcp -m mark --mark 0x0feed -j LOG --log-prefix "not matched"', shell=True)
+    subprocess.call('iptables -D OUTPUT -p tcp -m mark --mark 0x1feed -j LOG --log-prefix "matched"', shell=True)
 
 
 signal.signal(signal.SIGINT, clean_up)
 
 try:
-    subprocess.call('iptables -I OUTPUT -p tcp -j QUEUE', shell=True)
+    subprocess.call('iptables -A OUTPUT -p tcp -m mark ! --mark 0xfeed/0xffff -j NFQUEUE', shell=True)
+    subprocess.call('iptables -A OUTPUT -p tcp -m mark --mark 0x0feed -j LOG --log-prefix "not matched"', shell=True)
+    subprocess.call('iptables -A OUTPUT -p tcp -m mark --mark 0x1feed -j LOG --log-prefix "matched"', shell=True)
     print('running..')
     nfqueue.run()
 except KeyboardInterrupt:
