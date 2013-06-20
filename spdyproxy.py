@@ -1,12 +1,19 @@
 import socket
 import ssl
 import spdylay
+import M2Crypto
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 sock.connect(('198.52.103.140', 443))
+def callback(*args, **kwargs):
+    print('!!!')
+    return 0
 try:
-    sock = ssl.wrap_socket(sock, server_side=False, do_handshake_on_connect=False)
-    sock.do_handshake()
+    ssl_ctx = M2Crypto.SSL.Context(protocol='sslv3')
+    ssl_ctx.set_next_protocol_callback(callback)
+    sock = M2Crypto.SSL.Connection(ssl_ctx, sock)
+    sock.setup_ssl()
+    sock.connect_ssl()
     sock.setblocking(False)
     session = spdylay.Session(spdylay.CLIENT, spdylay.PROTO_SPDY3)
     session.submit_request(0,
