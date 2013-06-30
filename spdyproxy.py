@@ -1,65 +1,40 @@
 import socket
-import ssl
-import spdylay
+import tlslite
+import spdy.context
+import spdy.frames
 import select
-import time
-
-
-def on_stream_close_cb(session, stream_id, status_code):
-    print('close', stream_id)
-
-
-def on_ctrl_recv_cb(session, frame):
-    if frame.frame_type == spdylay.SYN_REPLY:
-        print(frame.nv)
-
-
-def on_data_chunk_recv_cb(session, flags, stream_id, data):
-    print(data)
-
-
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-try:
-    sock = ssl.wrap_socket(sock, npn_protocols=['spdy/3'])
-    sock.connect(('198.52.103.140', 443))
-    print(sock.selected_protocol())
-    sock.setblocking(False)
+sock.connect(('', 443))
+print('connected')
+connection = tlslite.TLSConnection(sock)
+connection.handshakeClientCert(nextProtos=['spdy/3'])
+print ('TLS NPN Selected: %r' % connection.next_proto)
+spdy_ctx = spdy.context.Context(spdy.context.CLIENT, version=3)
 
-    def send_cb(session, data):
-        print('send cb')
-        return sock.send(data)
+def send_frame(frame):
+    spdy_ctx.put_frame(frame)
+    out = spdy_ctx.outgoing()
+    connection.write(out)
 
-    session = spdylay.Session(
-        spdylay.CLIENT, spdylay.PROTO_SPDY3,
-        send_cb=send_cb,
-        on_ctrl_recv_cb=on_ctrl_recv_cb,
-        on_data_chunk_recv_cb=on_data_chunk_recv_cb,
-        on_stream_close_cb=on_stream_close_cb)
-    session.submit_request(0,
-                           [(':method', 'GET'),
-                            (':scheme', 'http'),
-                            (':path', '/'),
-                            (':version', 'HTTP/1.1'),
-                            (':host', 'www.baidu.com'),
-                            ('accept', '*/*'),
-                            ('user-agent', 'python-spdylay')])
+def read_frames():
     while True:
-        if session.want_read():
-            print('read')
-            try:
-                data = sock.recv(4096)
-                if data:
-                    session.recv(data)
-                else:
-                    break
-            except ssl.SSLError:
-                select.select([sock], [], [])
-        if session.want_write():
-            print('write')
-            try:
-                session.send()
-            except ssl.SSLError:
-                select.select([], [sock], [])
-finally:
-    sock.shutdown(socket.SHUT_RDWR)
-    sock.close()
+        answer = connection.read() # Blocking
+        spdy_ctx.incoming(answer)
+        frame = spdy_ctx.get_frame()
+        yield frame
+
+
+stream_id = spdy_ctx.next_stream_id
+syn_frame = spdy.frames.SynStream(stream_id, {
+    ':method' : 'GET',
+    ':path'   : '/',
+    ':version': 'HTTP/1.1',
+    ':host'   : 'www.baidu.com',
+    ':scheme' : 'http',
+})
+send_frame(syn_frame)
+for frame in read_frames():
+    if isinstance(frame, spdy.frames.SynReply):
+        print(frame.headers)
+    else:
+        print(frame)
